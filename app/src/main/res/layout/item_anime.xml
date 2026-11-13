@@ -1,0 +1,93 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- CardView actúa como una tarjeta física. Facilita poner bordes redondeados (cardCornerRadius) y un color de fondo unificado. -->
+<androidx.cardview.widget.CardView
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:layout_marginHorizontal="16dp"
+    android:layout_marginBottom="12dp"
+    app:cardBackgroundColor="@color/gris_oscuro"
+    app:cardCornerRadius="8dp"
+    app:cardElevation="0dp">
+
+    <!-- ConstraintLayout interno para distribuir la imagen a la izquierda y los textos a la derecha -->
+    <androidx.constraintlayout.widget.ConstraintLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:padding="12dp">
+
+        <!-- ImageView para la portada. scaleType="centerCrop" hace que la imagen llene el espacio de 80x120 sin deformarse, recortando los bordes si es necesario. -->
+        <ImageView
+            android:id="@+id/ivPortada"
+            android:layout_width="80dp"
+            android:layout_height="120dp"
+            android:scaleType="centerCrop"
+            app:layout_constraintBottom_toBottomOf="parent"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintTop_toTopOf="parent"
+            tools:src="@tools:sample/backgrounds/scenic" />
+
+        <!-- Título de la serie. tools:text muestra "Jujutsu Kaisen" solo en el editor para que veas cómo queda, pero en la app real estará vacío hasta que el código asigne el texto. -->
+        <TextView
+            android:id="@+id/tvTituloSerie"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="12dp"
+            android:textColor="@color/texto_primario"
+            android:textSize="18sp"
+            android:textStyle="bold"
+            app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintStart_toEndOf="@+id/ivPortada"
+            app:layout_constraintTop_toTopOf="parent"
+            tools:text="Jujutsu Kaisen" />
+
+        <!-- Texto secundario que mostrará la relación de episodios (ej. "5 / 12") -->
+        <TextView
+            android:id="@+id/tvProgresoTexto"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:textColor="@color/texto_secundario"
+            android:textSize="14sp"
+            app:layout_constraintStart_toStartOf="@+id/tvTituloSerie"
+            app:layout_constraintTop_toBottomOf="@+id/tvTituloSerie"
+            tools:text="Vistos: 5 / 12" />
+
+        <!-- Barra de progreso horizontal. progressBackgroundTint es el color del fondo de la barra, y progressTint es el color de la parte completada (naranja). -->
+        <ProgressBar
+            android:id="@+id/progressBarSerie"
+            style="?android:attr/progressBarStyleHorizontal"
+            android:layout_width="0dp"
+            android:layout_height="8dp"
+            android:layout_marginTop="8dp"
+            android:layout_marginEnd="16dp"
+            android:max="100"
+            android:progress="45"
+            android:progressBackgroundTint="@color/gris_claro"
+            android:progressTint="@color/naranja"
+            app:layout_constraintEnd_toStartOf="@+id/btnSumar"
+            app:layout_constraintStart_toStartOf="@+id/tvTituloSerie"
+            app:layout_constraintTop_toBottomOf="@+id/tvProgresoTexto" />
+
+        <!-- Botón para añadir capítulos. cornerRadius="24dp" (la mitad del alto que es 48dp) para hacer círculo perfecto. -->
+        <Button
+            android:id="@+id/btnSumar"
+            android:layout_width="48dp"
+            android:layout_height="48dp"
+            android:backgroundTint="@color/naranja"
+            android:insetLeft="0dp"
+            android:insetTop="0dp"
+            android:insetRight="0dp"
+            android:insetBottom="0dp"
+            android:text="+1"
+            android:textColor="@color/negro"
+            android:textSize="16sp"
+            android:textStyle="bold"
+            app:cornerRadius="24dp"
+            app:layout_constraintBottom_toBottomOf="parent"
+            app:layout_constraintEnd_toEndOf="parent" />
+
+    </androidx.constraintlayout.widget.ConstraintLayout>
+</androidx.cardview.widget.CardView>
