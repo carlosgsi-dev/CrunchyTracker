@@ -26,6 +26,7 @@ class MainActivity : AppCompatActivity() {
         setContentView(binding.root)
 
         configurarRecyclerView()
+        configurarBuscador()
 
         // Eliminamos probarConexionBasica() y reactivamos Jikan
         obtenerSeriesEnEmision()
@@ -79,6 +80,47 @@ class MainActivity : AppCompatActivity() {
                 withContext(Dispatchers.Main) {
                     Toast.makeText(this@MainActivity, "Fallo de conexión", Toast.LENGTH_SHORT).show()
                     Log.e("API_ERROR", "Error al cargar series", e)
+                }
+            }
+        }
+    }
+
+    private fun configurarBuscador() {
+        // Escucha las acciones del teclado sobre el campo de texto
+        binding.etBuscador.setOnEditorActionListener { textView, actionId, _ ->
+            // Si el usuario pulsa el botón de "Buscar" (la lupa) en el teclado virtual
+            if (actionId == android.view.inputmethod.EditorInfo.IME_ACTION_SEARCH) {
+                val query = textView.text.toString()
+                if (query.isNotEmpty()) {
+                    buscarAnimeEnKitsu(query)
+                }
+                // Ocultar el teclado tras buscar
+                val inputMethodManager = getSystemService(android.content.Context.INPUT_METHOD_SERVICE) as android.view.inputmethod.InputMethodManager
+                inputMethodManager.hideSoftInputFromWindow(textView.windowToken, 0)
+                true // Indicamos que hemos manejado el evento
+            } else {
+                false
+            }
+        }
+    }
+
+    private fun buscarAnimeEnKitsu(query: String) {
+        lifecycleScope.launch(Dispatchers.IO) {
+            try {
+                val respuesta = RetrofitClient.apiService.buscarAnime(query)
+                if (respuesta.isSuccessful) {
+                    val animesDto = respuesta.body()?.data ?: emptyList()
+                    val animesLocales = animesDto.map { it.toAnimeLocal() }
+
+                    withContext(Dispatchers.Main) {
+                        listaSeries.clear()
+                        listaSeries.addAll(animesLocales)
+                        adapter.notifyDataSetChanged()
+                    }
+                }
+            } catch (e: Exception) {
+                withContext(Dispatchers.Main) {
+                    android.widget.Toast.makeText(this@MainActivity, "Error en la búsqueda", android.widget.Toast.LENGTH_SHORT).show()
                 }
             }
         }
