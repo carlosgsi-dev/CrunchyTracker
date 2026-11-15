@@ -1,13 +1,18 @@
 package dev.carlosgsi.crunchytracker
 
+import android.content.Context
 import android.os.Bundle
 import android.util.Log
+import android.view.inputmethod.EditorInfo
+import android.view.inputmethod.InputMethodManager
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.LinearLayoutManager
 import dev.carlosgsi.crunchytracker.adapter.AnimeAdapter
 import dev.carlosgsi.crunchytracker.api.RetrofitClient
+import dev.carlosgsi.crunchytracker.database.AnimeDao
+import dev.carlosgsi.crunchytracker.database.AppDatabase
 import dev.carlosgsi.crunchytracker.databinding.ActivityMainBinding
 import dev.carlosgsi.crunchytracker.model.Anime
 import kotlinx.coroutines.Dispatchers
@@ -18,6 +23,7 @@ class MainActivity : AppCompatActivity() {
 
     private lateinit var binding: ActivityMainBinding
     private lateinit var adapter: AnimeAdapter
+    private lateinit var animeDao: AnimeDao
     private var listaSeries = mutableListOf<Anime>()
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -25,21 +31,27 @@ class MainActivity : AppCompatActivity() {
         binding = ActivityMainBinding.inflate(layoutInflater)
         setContentView(binding.root)
 
+        // Inicializamos la conexión con la tabla local
+        animeDao = AppDatabase.getDatabase(this).animeDao()
+
         configurarRecyclerView()
         configurarBuscador()
 
-        // Eliminamos probarConexionBasica() y reactivamos Jikan
-        obtenerSeriesEnEmision()
+        // Al arrancar, comprobamos primero si el usuario ya tiene series guardadas
+        cargarMisSeriesOPopulares()
     }
 
     private fun configurarRecyclerView() {
-        // Al pulsar +1, actualizamos el modelo y notificamos solo a esa fila
         adapter = AnimeAdapter(listaSeries) { posicion ->
             val anime = listaSeries[posicion]
-            // Validamos que no se puedan sumar más capítulos de los totales (si totales > 0)
             if (anime.episodiosTotales == 0 || anime.episodiosVistos < anime.episodiosTotales) {
                 anime.episodiosVistos++
                 adapter.notifyItemChanged(posicion)
+
+                // Guardamos el progreso en SQLite en segundo plano
+                lifecycleScope.launch(Dispatchers.IO) {
+                    animeDao.guardarOActualizar(anime)
+                }
             }
         }
 
@@ -47,59 +59,64 @@ class MainActivity : AppCompatActivity() {
         binding.recyclerViewSeries.adapter = adapter
     }
 
-    private fun obtenerSeriesEnEmision() {
-        // lifecycleScope lanza la corrutina ligada a la vida de esta pantalla.
-        // Si cierras la app antes de que cargue la API, la descarga se cancela sola (evita cuelgues de memoria).
+    private fun cargarMisSeriesOPopulares() {
         lifecycleScope.launch(Dispatchers.IO) {
-            try {
-                // Hacemos la petición de red (esto bloquea el hilo IO, pero no la pantalla)
-                val respuesta = RetrofitClient.apiService.getTrendingAnime()
+            val guardadas = animeDao.obtenerMisSeries()
 
-                if (respuesta.isSuccessful) {
-                    // Extraemos la lista 'data' de la respuesta JSON (o una lista vacía si es null)
-                    val animesDto = respuesta.body()?.data ?: emptyList()
-
-                    // Convertimos la lista de AnimeDto (red) a nuestra clase Anime (local)
-                    val animesLocales = animesDto.map { it.toAnimeLocal() }
-
-                    // Regresamos al hilo principal para actualizar la interfaz gráfica
-                    withContext(Dispatchers.Main) {
-                        listaSeries.clear()
-                        listaSeries.addAll(animesLocales)
-                        // Avisamos al adaptador para que dibuje las tarjetas
-                        adapter.notifyDataSetChanged()
-                    }
-                } else {
-                    // Si el servidor devuelve error 404, 500, etc.
-                    withContext(Dispatchers.Main) {
-                        Toast.makeText(this@MainActivity, "Error del servidor: ${respuesta.code()}", Toast.LENGTH_SHORT).show()
-                    }
-                }
-            } catch (e: Exception) {
-                // Si el móvil no tiene internet o no encuentra la URL
+            if (guardadas.isNotEmpty()) {
+                // Si ya sigues series, mostramos tu lista personal al abrir la app
                 withContext(Dispatchers.Main) {
-                    Toast.makeText(this@MainActivity, "Fallo de conexión", Toast.LENGTH_SHORT).show()
-                    Log.e("API_ERROR", "Error al cargar series", e)
+                    binding.tvTitulo.text = "Mis Series"
+                    listaSeries.clear()
+                    listaSeries.addAll(guardadas)
+                    adapter.notifyDataSetChanged()
                 }
+            } else {
+                // Si la base de datos está vacía, descargamos el catálogo popular de Kitsu
+                obtenerSeriesEnEmision()
             }
         }
     }
 
     private fun configurarBuscador() {
-        // Escucha las acciones del teclado sobre el campo de texto
         binding.etBuscador.setOnEditorActionListener { textView, actionId, _ ->
-            // Si el usuario pulsa el botón de "Buscar" (la lupa) en el teclado virtual
-            if (actionId == android.view.inputmethod.EditorInfo.IME_ACTION_SEARCH) {
-                val query = textView.text.toString()
+            if (actionId == EditorInfo.IME_ACTION_SEARCH) {
+                val query = textView.text.toString().trim()
                 if (query.isNotEmpty()) {
                     buscarAnimeEnKitsu(query)
+                } else {
+                    // Si busca con el texto vacío, vuelve a mostrar su lista guardada
+                    cargarMisSeriesOPopulares()
                 }
-                // Ocultar el teclado tras buscar
-                val inputMethodManager = getSystemService(android.content.Context.INPUT_METHOD_SERVICE) as android.view.inputmethod.InputMethodManager
-                inputMethodManager.hideSoftInputFromWindow(textView.windowToken, 0)
-                true // Indicamos que hemos manejado el evento
+                val imm = getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager
+                imm.hideSoftInputFromWindow(textView.windowToken, 0)
+                true
             } else {
                 false
+            }
+        }
+    }
+
+    private fun obtenerSeriesEnEmision() {
+        lifecycleScope.launch(Dispatchers.IO) {
+            try {
+                val respuesta = RetrofitClient.apiService.getTrendingAnime()
+                if (respuesta.isSuccessful) {
+                    val animesDto = respuesta.body()?.data ?: emptyList()
+                    val animesConProgreso = cruzarConBaseDeDatos(animesDto.map { it.toAnimeLocal() })
+
+                    withContext(Dispatchers.Main) {
+                        binding.tvTitulo.text = "Populares en Kitsu"
+                        listaSeries.clear()
+                        listaSeries.addAll(animesConProgreso)
+                        adapter.notifyDataSetChanged()
+                    }
+                }
+            } catch (e: Exception) {
+                withContext(Dispatchers.Main) {
+                    Toast.makeText(this@MainActivity, "Fallo de conexión", Toast.LENGTH_SHORT).show()
+                    Log.e("API_ERROR", "Error al cargar series", e)
+                }
             }
         }
     }
@@ -110,19 +127,32 @@ class MainActivity : AppCompatActivity() {
                 val respuesta = RetrofitClient.apiService.buscarAnime(query)
                 if (respuesta.isSuccessful) {
                     val animesDto = respuesta.body()?.data ?: emptyList()
-                    val animesLocales = animesDto.map { it.toAnimeLocal() }
+                    val animesConProgreso = cruzarConBaseDeDatos(animesDto.map { it.toAnimeLocal() })
 
                     withContext(Dispatchers.Main) {
+                        binding.tvTitulo.text = "Resultados: $query"
                         listaSeries.clear()
-                        listaSeries.addAll(animesLocales)
+                        listaSeries.addAll(animesConProgreso)
                         adapter.notifyDataSetChanged()
                     }
                 }
             } catch (e: Exception) {
                 withContext(Dispatchers.Main) {
-                    android.widget.Toast.makeText(this@MainActivity, "Error en la búsqueda", android.widget.Toast.LENGTH_SHORT).show()
+                    Toast.makeText(this@MainActivity, "Error en la búsqueda", Toast.LENGTH_SHORT).show()
+                    Log.e("API_ERROR", "Error buscando anime", e)
                 }
             }
+        }
+    }
+
+    // Si un anime que viene de Kitsu ya está en nuestra BD local, respetamos los episodios vistos guardados
+    private suspend fun cruzarConBaseDeDatos(listaRed: List<Anime>): List<Anime> {
+        return listaRed.map { animeRed ->
+            val animeGuardado = animeDao.obtenerPorId(animeRed.id)
+            if (animeGuardado != null) {
+                animeRed.episodiosVistos = animeGuardado.episodiosVistos
+            }
+            animeRed
         }
     }
 }

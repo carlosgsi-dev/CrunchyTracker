@@ -1,5 +1,6 @@
 plugins {
     alias(libs.plugins.android.application)
+    alias(libs.plugins.ksp)
 }
 
 android {
@@ -50,4 +51,7 @@ dependencies {
     implementation(libs.retrofit.gson)
     // Carga de imágenes en vistas XML
     implementation(libs.glide)
+    implementation(libs.room.runtime)
+    implementation(libs.room.ktx)
+    ksp(libs.room.compiler)
 }
